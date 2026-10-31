@@ -181,3 +181,6 @@ cython_debug/
 .cursorindexingignore
 /backend/node_modules/
 /.idea/
+/backend/.agents/
+/backend/.claude/
+/backend/.windsurf/
