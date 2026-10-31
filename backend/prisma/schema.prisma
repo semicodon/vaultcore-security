@@ -1,0 +1,77 @@
+// backend/prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CUSTOMER
+  CREDIT_ANALYST
+  SECURITY_ADMIN
+}
+
+model User {
+  id           String  @id @default(uuid())
+  email        String  @unique
+  passwordHash String
+  role         Role    @default(CUSTOMER)
+  mfaEnabled   Boolean @default(false)
+  mfaSecretEnc String? // Encrypted TOTP secret (AES-256-GCM)
+
+  // PII Vault Fields (Encrypted at application layer before DB insert)
+  ssnEncrypted String? // Format: iv:authTag:ciphertext
+  ssnLastFour  String? // Safe for frontend display (e.g., "6789")
+
+  accounts  CreditAccount[]
+  auditLogs AuditLog[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model CreditAccount {
+  id               String  @id @default(uuid())
+  userId           String
+  user             User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  accountNumberEnc String // Encrypted full account number
+  accountLastFour  String // Safe for frontend display
+  creditLimitCents Int // Stored in integer cents to prevent float rounding vulnerabilities
+  balanceCents     Int     @default(0)
+  isFrozen         Boolean @default(false)
+
+  transactions LedgerEntry[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId])
+}
+
+model LedgerEntry {
+  id             String        @id @default(uuid())
+  accountId      String
+  account        CreditAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  amountCents    Int // Positive for credit, negative for debit
+  description    String
+  idempotencyKey String        @unique // Prevents double-charging on network retries
+  createdAt      DateTime      @default(now())
+
+  @@index([accountId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String // e.g., "VIEW_FULL_SSN", "FREEZE_ACCOUNT", "LOGIN_FAILED"
+  resourceId String? // ID of the affected account or user
+  ipAddress  String
+  userAgent  String?
+  metadata   Json? // Sanitized context (NEVER store raw secrets here)
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action, createdAt])
+}
