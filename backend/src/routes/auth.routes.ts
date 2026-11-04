@@ -126,7 +126,7 @@ authRouter.post(
 
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid credentials format' });
+    res.status(400).json({ error: `Invalid credentials format. Error:  ${z.treeifyError(parsed.error)}` });
     return;
   }
 

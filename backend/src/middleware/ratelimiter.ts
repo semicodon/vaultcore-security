@@ -2,10 +2,13 @@ import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { redis } from '../db/redis.js';
 
+const RATE_LIMIT_MAX_API_LIMITER = 100
+const RATE_LIMIT_MAX_AUTH_LIMITER = 7
+
 // General API rate limiter: 100 requests per 15 minutes
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: RATE_LIMIT_MAX_API_LIMITER,
   standardHeaders: true,
   legacyHeaders: false,
   store: new RedisStore({
@@ -21,7 +24,7 @@ export const apiLimiter = rateLimit({
 // Strict Auth rate limiter: 5 attempts per 15 minutes (Brute-force protection)
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: RATE_LIMIT_MAX_AUTH_LIMITER,
   standardHeaders: true,
   legacyHeaders: false,
   store: new RedisStore({

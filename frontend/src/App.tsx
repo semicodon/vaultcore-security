@@ -17,7 +17,7 @@ const VaultDashboard: React.FC = () => {
   const fetchAccounts = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await apiFetch<{ accounts: CreditAccount[] }>('/ledger/accounts');
+      const res = await apiFetch<{ accounts: CreditAccount[] }>('/accounts');
       setAccounts(res.accounts);
     } catch (err) {
       console.error('Failed to load accounts:', err);

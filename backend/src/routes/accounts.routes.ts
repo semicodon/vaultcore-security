@@ -100,7 +100,7 @@ accountRouter.post('/', async (req: Request, res: Response) => {
 // 2. GET /api/v1/accounts
 // List user's Credit Accounts (Masked by default)
 // ***************************************
-accountRouter.get('/', async (req: Request, res: Response) => {
+accountRouter.get('/accounts', async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
   const accounts = await prisma.creditAccount.findMany({

@@ -32,7 +32,7 @@ export async function apiFetch<T>(
   const headers = new Headers(options.headers);
 
   if (!headers.has('Content-Type') && options.body) {
-    headers.set('Content-Type', 'appliccation/json');
+    headers.set('Content-Type', 'application/json');
   }
 
   // Attach in-memory Bearer token if available in module closure
@@ -58,7 +58,7 @@ export async function apiFetch<T>(
     !options._isRetry &&
     !endpoint.startsWith('/auth/login') &&
     !endpoint.startsWith('/auth/refresh') &&
-    !endpoint.startsWith('/vault/reveal-ssn')
+    !endpoint.startsWith('/vault/reveal-pii')
   ) {
     const refreshed = await attemptSilentRefresh();
     if (refreshed) {

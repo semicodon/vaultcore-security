@@ -47,7 +47,7 @@ export const PiiVaultCard: React.FC<PiiVaultCardProps> = ({ ssnLastFour }) => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
-  const handleStepUpReveal = async (e: React.FormEvent) => {
+  const handleStepUpReveal = async (e: React.ChangeEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -56,7 +56,7 @@ export const PiiVaultCard: React.FC<PiiVaultCardProps> = ({ ssnLastFour }) => {
       const res = await apiFetch<{
         ssn: string;
         expiresInSeconds: number
-      }>('/vault/reveal-ssn', {
+      }>('/vault/reveal-pii', {
         method: 'POST',
         body: JSON.stringify({ password }),
       });

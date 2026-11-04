@@ -43,7 +43,7 @@ export const LedgerTransferCard: React.FC<LedgerTransferCardProps> = ({   accoun
         Math.floor(Math.random() * 10)
       ).join('');
 
-      await apiFetch('/ledger/accounts', {
+      await apiFetch('/', {
         method: 'POST',
         body: JSON.stringify({
           accountNumber: randomAccountNum,
@@ -75,7 +75,7 @@ export const LedgerTransferCard: React.FC<LedgerTransferCardProps> = ({   accoun
     setSubmitting(true);
     try {
       const res = await apiFetch<{ idempotentReplay?: boolean; message?: string }>(
-        '/ledger/transfer',
+        '/transfer',
         {
           method: 'POST',
           idempotencyKey,
