@@ -41,6 +41,7 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/accounts', accountRouter);
 app.use('/api/v1/vault', vaultRouter);
+app.use('/api/v1', vaultRouter); // Allows /api/v1/profile if defined inside vaultRouter
 
 // 7. Protected Profile Route
 app.get('/api/v1/me', requireAuth, (req: Request, res: Response) => {

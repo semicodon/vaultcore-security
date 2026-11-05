@@ -13,11 +13,9 @@ export const accountRouter = Router();
 accountRouter.use(requireAuth)
 
 const createAccountSchema = z.object({
-  creditLimitCents: z
-    .number()
-    .int('Credit limit must be in integer cents')
-    .min(10000, 'Minimum credit limit is $100.00 (10000 cents)')
-    .max(10000000, 'Maximum credit limit is $100,000.00 (10000000 cents)'),
+  accountNumber: z.string().regex(/^\d{16}$/, 'Account number must be 16 digits'),
+  creditLimitCents: z.number().int().positive().max(100_000_000), // Up to $1M
+  initialBalanceCents: z.number().int().min(0).default(0),        // Allow custom starting balance
 });
 
 const transferSchema = z.object({
@@ -48,15 +46,19 @@ function generateSecureAccountNumber(): string {
   }
   return digits;
 }
-
 // ***************************************
 // 1. POST /api/v1/accounts
 // Open a new Credit Account (Encrypted Account Number)
 // ***************************************
-accountRouter.post('/', async (req: Request, res: Response) => {
+accountRouter.post('/',
+  async (req: Request, res: Response) => {
+
   const parsed = createAccountSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({error: 'Invalid account parameters', details: z.treeifyError(parsed.error)});
+    res.status(400).json({
+      error: 'Invalid account parameters',
+      details: z.treeifyError(parsed.error),
+    });
     return;
   }
 
@@ -64,43 +66,67 @@ accountRouter.post('/', async (req: Request, res: Response) => {
   const rawAccountNumber = generateSecureAccountNumber();
   const accountNumberEnc = encryptField(rawAccountNumber);
   const accountLastFour = rawAccountNumber.slice(-4);
+  const { accountNumber, creditLimitCents, initialBalanceCents } = parsed.data;
 
-  // MODEL: Create new credit account instance and select only fields without sensitive account number
-  const account = await prisma.creditAccount.create({
-    data: {
-      userId,
-      accountNumberEnc,
-      accountLastFour,
-      creditLimitCents: parsed.data.creditLimitCents,
-      balanceCents: 0,
-    },
-    // SECURITY: Never select or return accountNumberEnc in standard responses
-    select: {
-      id: true,
-      accountLastFour: true,
-      creditLimitCents: true,
-      balanceCents: true,
-      isFrozen: true,
-      createdAt: true,
-    },
-  });
+  if (initialBalanceCents > creditLimitCents) {
+    res.status(400).json({ error: 'Initial balance cannot exceed credit limit' });
+    return;
+  }
+
+    const account = await prisma.$transaction(async (tx) => {
+      const newAccount = await tx.creditAccount.create({
+        data: {
+          userId,
+          accountNumberEnc,
+          accountLastFour,
+          creditLimitCents,
+          balanceCents: initialBalanceCents,
+        },
+        // SECURITY: Never return accountNumberEnc in API responses
+        select: {
+          id: true,
+          accountLastFour: true,
+          creditLimitCents: true,
+          balanceCents: true,
+          isFrozen: true,
+          createdAt: true,
+        },
+      });
+
+      if (initialBalanceCents > 0) {
+        await tx.ledgerEntry.create({
+          data: {
+            accountId: newAccount.id,
+            amountCents: initialBalanceCents,
+            description: 'Opening credit account balance',
+            idempotencyKey: `init-${newAccount.id}`,
+          },
+        });
+      }
+
+      return newAccount;
+    });
 
   await recordAuditLog({
     req,
     actorId: userId,
     action: 'CREDIT_ACCOUNT_CREATED',
     resourceId: account.id,
-    metadata: { creditLimitCents: account.creditLimitCents, accountLastFour },
+    metadata: {
+      creditLimitCents: account.creditLimitCents,
+      balanceCents: account.balanceCents,
+      accountLastFour,
+    },
   });
+
   res.status(201).json({ account });
 });
-
 
 // ***************************************
 // 2. GET /api/v1/accounts
 // List user's Credit Accounts (Masked by default)
 // ***************************************
-accountRouter.get('/accounts', async (req: Request, res: Response) => {
+accountRouter.get('/', async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
   const accounts = await prisma.creditAccount.findMany({
