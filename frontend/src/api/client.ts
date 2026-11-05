@@ -106,3 +106,59 @@ export async function attemptSilentRefresh(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * A secure wrapper around the native browser `fetch` API designed for Zero-Trust single-page applications.
+
+ **Security Features & Lifecycle:**
+
+ 1. **Automatic Bearer Token Injection:** Automatically attaches the in-memory short-lived Access Token from closure state (`memoryAccessToken`) to the `Authorization` header (`Bearer <token>`).
+
+ 2. **HttpOnly Cookie Transmission:** Sets `credentials: 'include'` on every request so the browser automatically transmits the 7-day `vaultcore_refresh` HttpOnly cookie on token refresh calls.
+
+ 3. **Transparent 401 Recovery (Silent Refresh Interceptor):** If an API request returns `401 Unauthorized` (indicating the 15-minute access token has expired), `secureFetch` intercepts the response, triggers  `attemptSilentRefresh()` in the background, obtains a new access token, and transparently retries the original request without interrupting the user or prompting for a login.
+ *
+ * @param endpoint - The relative API route (e.g., `/accounts` or `/admin/audit-logs`).
+ * @param options - Standard RequestInit options (method, headers, body, etc.).
+ * @returns A Promise resolving to the standard Response object.
+ */
+
+export async function secureFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
+  const token = getAccessToken();
+  const headers = new Headers(options.headers || {});
+
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  if (options.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  let response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+    credentials: 'include',
+  });
+
+  // If access token expired (401), attempt silent refresh once and retry
+  if (response.status === 401 && endpoint !== '/auth/refresh') {
+
+    const refreshed = await attemptSilentRefresh();
+
+    if (refreshed) {
+      const newToken = getAccessToken();
+      if (newToken) {
+        headers.set('Authorization', `Bearer ${newToken}`);
+      }
+      response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+        credentials: 'include',
+      });
+    }
+
+  }
+
+  return response;
+}

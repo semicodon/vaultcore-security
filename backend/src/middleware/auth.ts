@@ -31,7 +31,9 @@ declare global {
  * @param res
  * @param next
  */
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export function requireAuth(req: Request,
+                            res: Response,
+                            next: NextFunction): void {
 
   // Validate Bearer token; authHeader is the header value containing the token - e.g. 'Bearer <token>'
   const authHeader = req.headers.authorization;
@@ -70,6 +72,7 @@ export function requireRole(...allowedRoles: Role[]) {
       return;
     }
 
+    // If the request user is not in 'allowedRoles' record it in the audit log as an unauthorized attempt.
     if (!allowedRoles.includes(req.user.role)) {
       await recordAuditLog({
         req,

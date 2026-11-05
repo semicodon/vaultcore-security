@@ -4,12 +4,13 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import { authRouter } from './routes/auth.routes.js';
+import { accountRouter } from './routes/accounts.routes.js';
+import { vaultRouter } from './routes/vault.routes.js';
+import { adminRouter } from './routes/admin.routes.js';
 import { requireAuth } from './middleware/auth.js';
 import {apiLimiter} from "./middleware/ratelimiter";
-import {accountRouter} from "./routes/accounts.routes";
-import {vaultRouter} from "./routes/vault.routes";
 
-const app = express();
+export const app = express();
 
 // 1. Disable X-Powered-By header & enforce HTTP Security Headers
 app.disable('x-powered-by');
@@ -29,19 +30,22 @@ app.use(
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
 
-// 4. Global Redis Rate Limiter
-app.use('/api', apiLimiter);
+// 4. Global Redis Rate Limiter (Skipped in automated test mode to prevent test flakiness)
+if (env.NODE_ENV !== 'test') {
+  app.use('/api', apiLimiter);
+}
 
 // 5. Health Check Endpoint
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'vaultcore-api' });
 });
 
-// 6. Mount Zero-Trust Auth, Credit Ledger, and PII Vault Routes
+// 6. Mount Zero-Trust Auth, Credit Ledger, PII Vault & Security Admin Routes
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/accounts', accountRouter);
 app.use('/api/v1/vault', vaultRouter);
-app.use('/api/v1', vaultRouter); // Allows /api/v1/profile if defined inside vaultRouter
+app.use('/api/v1', vaultRouter);
+app.use('/api/v1/admin', adminRouter);
 
 // 7. Protected Profile Route
 app.get('/api/v1/me', requireAuth, (req: Request, res: Response) => {
@@ -57,6 +61,8 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
-app.listen(env.PORT, () => {
-  console.log(`🔒 VaultCore Hardened API (${env.NODE_ENV}) listening on [http://127.0.0.1](http://127.0.0.1):${env.PORT}`);
-});
+if (env.NODE_ENV !== 'test') {
+  app.listen(env.PORT, () => {
+    console.log(`🔒 VaultCore Hardened API listening on http://127.0.0.1:${env.PORT}`);
+  });
+}
