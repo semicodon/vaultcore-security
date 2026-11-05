@@ -28,26 +28,50 @@ export const LedgerTransferCard: React.FC<LedgerTransferCardProps> = ({   accoun
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [initialBalanceDollars, setInitialBalanceDollars] = useState('1000');
+  const [creditLimitDollars, setCreditLimitDollars] = useState('5000');
 
   // Rotate the Idempotency Key whenever the user modifies the transfer parameters
   const rotateKeyOnInputChange = () => {
     setIdempotencyKey(crypto.randomUUID());
     setStatusMessage(null);
   };
-
   const handleCreateAccount = async () => {
-    setCreatingAccount(true);
     setError(null);
+
+    const parsedBalance = Number(initialBalanceDollars);
+    const parsedLimit = Number(creditLimitDollars);
+
+    if (!Number.isFinite(parsedBalance) || parsedBalance < 0) {
+      setError('Enter a valid non-negative initial balance');
+      return;
+    }
+    if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+      setError('Enter a valid positive credit limit');
+      return;
+    }
+
+    // Convert dollars to integer cents to prevent floating-point issues
+    const initialBalanceCents = Math.round(parsedBalance * 100);
+    const creditLimitCents = Math.round(parsedLimit * 100);
+
+    if (initialBalanceCents > creditLimitCents) {
+      setError('Initial balance cannot exceed the credit limit');
+      return;
+    }
+
+    setCreatingAccount(true);
     try {
       const randomAccountNum = Array.from({ length: 16 }, () =>
         Math.floor(Math.random() * 10)
       ).join('');
 
-      await apiFetch('/', {
+      await apiFetch('/accounts', {
         method: 'POST',
         body: JSON.stringify({
           accountNumber: randomAccountNum,
-          creditLimitCents: 500000, // $5,000.00 default limit
+          creditLimitCents,
+          initialBalanceCents, // Send initial balance to backend
         }),
       });
       await onRefreshAccounts();
@@ -71,11 +95,10 @@ export const LedgerTransferCard: React.FC<LedgerTransferCardProps> = ({   accoun
 
     // Convert dollars to exact integer cents to prevent IEEE-754 floating-point vulnerabilities
     const amountCents = Math.round(parsedDollars * 100);
-
     setSubmitting(true);
     try {
-      const res = await apiFetch<{ idempotentReplay?: boolean; message?: string }>(
-        '/transfer',
+      const res = await apiFetch<{ status?: string; message?: string }>(
+        '/accounts/transfer', // 👈 Matches app.use('/api/v1/accounts', accountRouter) + .post('/transfer')
         {
           method: 'POST',
           idempotencyKey,
@@ -84,11 +107,12 @@ export const LedgerTransferCard: React.FC<LedgerTransferCardProps> = ({   accoun
             toAccountId,
             amountCents,
             description: description.trim() || 'VaultCore Ledger Transfer',
+            idempotencyKey, // 👈 Required by transferSchema in accounts.routes.ts!
           }),
         }
       );
 
-      if (res.idempotentReplay) {
+      if (res.status === 'idempotent_replay') {
         setStatusMessage('Idempotent replay detected: Transfer was already safely processed.');
       } else {
         setStatusMessage(`Transferred $${(amountCents / 100).toFixed(2)} inside Serializable ACID transaction.`);
@@ -109,21 +133,51 @@ export const LedgerTransferCard: React.FC<LedgerTransferCardProps> = ({   accoun
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <ArrowRightLeft className="w-5 h-5 text-indigo-400" />
           <h2 className="text-lg font-semibold text-white">Transactional Credit Ledger</h2>
         </div>
-        <button
-          type="button"
-          onClick={handleCreateAccount}
-          disabled={creatingAccount}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 transition"
-        >
-          <PlusCircle className="w-4 h-4" />
-          {creatingAccount ? 'Provisioning...' : 'New Credit Account ($5,000 Limit)'}
-        </button>
-      </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1">
+            <span className="text-xs text-slate-400">Start Bal ($):</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={initialBalanceDollars}
+              onChange={(e) => setInitialBalanceDollars(e.target.value)}
+              className="w-20 bg-transparent text-xs text-white focus:outline-none"
+              placeholder="1000"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1">
+            <span className="text-xs text-slate-400">Limit ($):</span>
+            <input
+              type="number"
+              min="1"
+              step="0.01"
+              value={creditLimitDollars}
+              onChange={(e) => setCreditLimitDollars(e.target.value)}
+              className="w-20 bg-transparent text-xs text-white focus:outline-none"
+              placeholder="5000"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCreateAccount}
+            disabled={creatingAccount}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 transition"
+          >
+            <PlusCircle className="w-4 h-4" />
+            {creatingAccount ? 'Provisioning...' : 'New Credit Account'}
+          </button>
+        </div>
+      </div><div className="flex flex-wrap items-center justify-between gap-3">
+    </div>
 
       {/* Account Balances Grid */}
       {accounts.length === 0 ? (
